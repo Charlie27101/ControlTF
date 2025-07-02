@@ -1,0 +1,154 @@
+import serial
+import time
+import struct
+
+class RMDX6:
+    def __init__(self, motor_id, com_port, baudrate=115200, tsamp=0.02):
+        # Initialize motor parameters and open the serial port
+        self.id = motor_id                 # Motor ID
+        self.gearatio = 8                  # Gear ratio for speed conversion
+        self.delay = tsamp                 # Delay after command to allow response
+        self.port = serial.Serial(com_port, baudrate=baudrate, timeout=1)  # Open serial port
+
+    def send485(self, scmd, data_bytes):
+        # Send command to motor over RCOMS-485 using specified protocol
+        header = [0x3E, self.id, 8]  # Start byte, motor ID, fixed data length (8 bytes)
+        cmd = [int(scmd[i:i+2], 16) for i in (0, 2)] if len(scmd) == 4 else [int(scmd, 16), 0]  # Parse command bytes
+        msg = bytearray(header + cmd + data_bytes)  # Full message before CRC
+        crc = self.get_crc16(msg)  # Calculate CRC16
+        msg += struct.pack('<H', crc)  # Append CRC to message
+        self.port.write(msg)  # Send message
+        time.sleep(self.delay)  # Wait for response
+        response = self.port.read(13)  # Read 13-byte response
+        return response
+
+    def send_rms(self, command_id, data_bytes):
+        # Send a more generic RMS-formatted command
+        start = 0x3E  # Start byte
+        length = len(data_bytes) + 2  # Length includes command byte and data
+        header = [start, self.id, length, command_id]  # Header with command
+        msg = bytearray(header + data_bytes)  # Construct full message
+        crc = self.get_crc16(msg)  # CRC16
+        msg += struct.pack('<H', crc)  # Append CRC
+        self.port.write(msg)  # Send
+        time.sleep(self.delay)  # Wait
+        response = self.port.read(self.port.in_waiting or 1)  # Read available response
+        return response
+
+    def get_crc16(self, data):
+        # Calculate CRC16 using Modbus standard
+        crc = 0xFFFF
+        for b in data:
+            crc ^= b
+            for _ in range(8):
+                if crc & 1:
+                    crc = (crc >> 1) ^ 0xA001
+                else:
+                    crc >>= 1
+        return crc
+
+    def get_angle(self):
+        # Request multi-turn angle from motor
+        response = self.send485('92', [0]*6)
+        if len(response) >= 11:
+            angle_raw = struct.unpack('<i', response[7:11])[0]  # Extract signed 32-bit int
+            return angle_raw / 100.0  # Convert to degrees
+        else :
+            print("Error: Invalid response length for angle request.")
+            return None
+        return None
+
+    def get_rpm(self):
+        # Request motor speed in RPM
+        response = self.send485('9C', [0]*6)
+        if len(response) >= 9:
+            vel_raw = struct.unpack('<h', response[7:9])[0]  # Extract signed 16-bit int
+            return vel_raw
+        return None
+
+    def get_state(self):
+        # Read temperature, current, velocity and angle from motor
+        response = self.send485('9C', [0]*6)
+        if len(response) >= 11:
+            temp = response[4]  # Temperature in Celsius
+            current = struct.unpack('<h', response[5:7])[0] / 100.0  # Current in A
+            vel = struct.unpack('<h', response[7:9])[0] * self.gearatio  # Speed scaled
+            angle = struct.unpack('<h', response[9:11])[0]  # Angle in degrees
+            return temp, current, vel, angle
+        return None, None, None, None
+
+    def get_state_raw(self):
+        # Read 13 byte array from motor for temp, current, velocity and angle
+        response = self.send485('9C', [0]*6)
+        if len(response) >= 11:
+            return response
+        else:
+            return None
+
+
+    def set_torque(self, current):
+        # Send torque command to motor (current in A)
+        current_val = int(current * 100)  # Convert to centiamps
+        current_bytes = struct.pack('<h', current_val)  # Pack as little-endian
+        data_bytes = [0, 0] + list(current_bytes) + [0, 0]  # Pad to 6 bytes
+        response = self.send485('A1', data_bytes)  # Send command
+        if len(response) >= 11:
+            temp = response[4]
+            curr = struct.unpack('<h', response[5:7])[0] / 100.0
+            vel = struct.unpack('<h', response[7:9])[0] * self.gearatio
+            angle = struct.unpack('<h', response[9:11])[0]
+            return temp, curr, vel, angle
+        return None, None, None, None
+    
+        def set_speed(self, speed):
+        # Send speed in rpm to motor
+            speedTodps = int(sped / 6)  # Convert to dps
+            current_bytes = struct.pack('<h', speedTodps)  # Pack as little-endian
+            data_bytes = [0, 0] + list(current_bytes) + [0, 0]  # Pad to 6 bytes
+            response = self.send485('A2', data_bytes)  # Send command
+            if len(response) >= 11:
+                temp = response[4]
+                curr = struct.unpack('<h', response[5:7])[0] / 100.0
+                vel = struct.unpack('<h', response[7:9])[0] * self.gearatio
+                angle = struct.unpack('<h', response[9:11])[0]
+                return temp, curr, vel, angle
+            return None, None, None, None
+
+    def move_to_position(self, angle_deg, max_vel):
+        # Command motor to move to specific angle at max velocity
+        vel_bytes = struct.pack('<h', int(max_vel))  # Pack max velocity (dps)
+        angle_bytes = struct.pack('<i', int(angle_deg * 100))  # Pack angle (deg * 100)
+        data_bytes = list(vel_bytes + angle_bytes)  # Combine to 6 bytes
+        return self.send485('A4', data_bytes)  # Send command
+
+    def stop(self):
+        # Stop the motor
+        return self.send485('81', [0]*6)
+
+    def shutdown(self):
+        # Shutdown motor power
+        return self.send485('80', [0]*6)
+
+    def close(self):
+        # Safely shutdown and close serial port
+        self.shutdown()
+        self.port.close()
+
+# Example usage: log values for 10 seconds
+if __name__ == '__main__':
+    motor = RMDX6(motor_id=1, com_port='COM10', baudrate=115200, tsamp=0.001)  # Reinitialize motor
+    print("Motor initialized. Starting to log values...")
+    motor.set_torque(0.35)  # Set initial torque
+    motorData= []
+    timeVector = []
+    startime= time.time()#starting time
+    while startime>time.time()-2:  # Log for 10 seconds
+        motorData.append((motor.get_state_raw(),time.time()-startime))  # Append motor state and current time
+    motor.stop()  # Stop motor after logging
+    motor.close()  # Close port after use
+    print("Motor port closed.") 
+    print(motorData)
+    temp = response[4]
+    curr = struct.unpack('<h', motorData[5:7])[0] / 100.0
+    vel = struct.unpack('<h', response[7:9])[0] * self.gearatio
+    angle = struct.unpack('<h', response[9:11])[0]
