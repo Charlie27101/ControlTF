@@ -1,6 +1,9 @@
 import serial
 import time
 import struct
+import csv
+import struct
+
 
 class RMDX6:
     def __init__(self, motor_id, com_port, baudrate=115200, tsamp=0.02):
@@ -148,7 +151,16 @@ if __name__ == '__main__':
     motor.close()  # Close port after use
     print("Motor port closed.") 
     print(motorData)
-    temp = response[4]
-    curr = struct.unpack('<h', motorData[5:7])[0] / 100.0
-    vel = struct.unpack('<h', response[7:9])[0] * self.gearatio
-    angle = struct.unpack('<h', response[9:11])[0]
+    # Create CSV and write headers
+    with open('motor_data.csv', 'w', newline='') as csvfile:
+        writer = csv.writer(csvfile)
+        writer.writerow(['Time (s)', 'Temperature (°C)', 'Current (A)', 'Velocity (rpm)', 'Angle (deg)'])
+        for response, timestamp in motorData:
+            try:
+                temp = response[4]
+                curr = struct.unpack('<h', response[5:7])[0] / 100.0
+                vel = struct.unpack('<h', response[7:9])[0] * motor.gearatio
+                angle = struct.unpack('<h', response[9:11])[0]
+                writer.writerow([timestamp, temp, curr, vel, angle])
+            except Exception as e:
+                print(f"Error parsing response at {timestamp:.3f}s: {e}")
