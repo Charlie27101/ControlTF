@@ -3,7 +3,7 @@ import time
 import struct
 import csv
 import struct
-
+import math
 
 class RMDX6:
     def __init__(self, motor_id, com_port, baudrate=115200, tsamp=0.02):
@@ -75,7 +75,7 @@ class RMDX6:
         if len(response) >= 11:
             temp = response[4]  # Temperature in Celsius
             current = struct.unpack('<h', response[5:7])[0] / 100.0  # Current in A
-            vel = struct.unpack('<h', response[7:9])[0] * self.gearatio  # Speed scaled
+            vel = struct.unpack('<h', response[7:9])[0] * self.gearatio  # Speed scaled, the spped returned is in dps
             angle = struct.unpack('<h', response[9:11])[0]  # Angle in degrees
             return temp, current, vel, angle
         return None, None, None, None
@@ -103,10 +103,37 @@ class RMDX6:
             return temp, curr, vel, angle
         return None, None, None, None
     
-        def set_speed(self, speed):
+    def quick_set_torque(self, current):
+        # Send torque command to motor (current in A)
+        current_val = int(current * 100)  # Convert to centiamps
+        current_bytes = struct.pack('<h', current_val)  # Pack as little-endian
+        data_bytes = [0, 0] + list(current_bytes) + [0, 0]  # Pad to 6 bytes
+        response = self.send485('A1', data_bytes)  # Send command
+        if len(response) >= 11:
+            temp = response[4]
+            curr = struct.unpack('<h', response[5:7])[0] / 100.0
+            vel = struct.unpack('<h', response[7:9])[0] * self.gearatio
+            angle = struct.unpack('<h', response[9:11])[0]
+            return temp, curr, vel, angle
+        return None, None, None, None
+
+        def set_speed_rpm(self, speed):
         # Send speed in rpm to motor
-            speedTodps = int(sped / 6)  # Convert to dps
-            current_bytes = struct.pack('<h', speedTodps)  # Pack as little-endian
+            #speedTodps = int(sped / 6)  # Convert to dps 
+            current_bytes = struct.pack('<h', int(sped / 6))  # Pack as little-endian
+            data_bytes = [0, 0] + list(current_bytes) + [0, 0]  # Pad to 6 bytes
+            response = self.send485('A2', data_bytes)  # Send command
+            if len(response) >= 11:
+                temp = response[4]
+                curr = struct.unpack('<h', response[5:7])[0] / 100.0
+                vel = struct.unpack('<h', response[7:9])[0] * self.gearatio
+                angle = struct.unpack('<h', response[9:11])[0]
+                return temp, curr, vel, angle
+            return None, None, None, None
+
+        def set_speed_dps(self, speed):
+        # Send speed in dps to motor
+            current_bytes = struct.pack('<h', speed)  # Pack as little-endian
             data_bytes = [0, 0] + list(current_bytes) + [0, 0]  # Pad to 6 bytes
             response = self.send485('A2', data_bytes)  # Send command
             if len(response) >= 11:
@@ -137,6 +164,22 @@ class RMDX6:
         self.shutdown()
         self.port.close()
 
+#csv operations
+def csv_from_motor_data(filename, data):
+        # Create CSV and write headers
+    with open(filename+'.csv', 'w', newline='') as csvfile:
+        writer = csv.writer(csvfile)
+        writer.writerow(['Time (s)', 'Temperature (°C)', 'Current (A)', 'Velocity (rpm)', 'Angle (deg)'])
+        for response, timestamp in motorData:
+            try:
+                temp = response[4]
+                curr = struct.unpack('<h', response[5:7])[0] / 100.0
+                vel = struct.unpack('<h', response[7:9])[0] * motor.gearatio
+                angle = struct.unpack('<h', response[9:11])[0]
+                writer.writerow([timestamp, temp, curr, vel, angle])
+            except Exception as e:
+                print(f"Error parsing response at {timestamp:.3f}s: {e}")
+
 # Example usage: log values for 10 seconds
 if __name__ == '__main__':
     motor = RMDX6(motor_id=1, com_port='COM10', baudrate=115200, tsamp=0.001)  # Reinitialize motor
@@ -151,16 +194,4 @@ if __name__ == '__main__':
     motor.close()  # Close port after use
     print("Motor port closed.") 
     print(motorData)
-    # Create CSV and write headers
-    with open('motor_data.csv', 'w', newline='') as csvfile:
-        writer = csv.writer(csvfile)
-        writer.writerow(['Time (s)', 'Temperature (°C)', 'Current (A)', 'Velocity (rpm)', 'Angle (deg)'])
-        for response, timestamp in motorData:
-            try:
-                temp = response[4]
-                curr = struct.unpack('<h', response[5:7])[0] / 100.0
-                vel = struct.unpack('<h', response[7:9])[0] * motor.gearatio
-                angle = struct.unpack('<h', response[9:11])[0]
-                writer.writerow([timestamp, temp, curr, vel, angle])
-            except Exception as e:
-                print(f"Error parsing response at {timestamp:.3f}s: {e}")
+    csv_from_motor_data('motor_data', motorData)  # Save data to CSV
