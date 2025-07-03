@@ -182,7 +182,7 @@ def csv_from_motor_data(filename, data):
 
 # Example usage: log values for 10 seconds
 if __name__ == '__main__':
-    motor = RMDX6(motor_id=1, com_port='COM10', baudrate=115200, tsamp=0.001)  # Reinitialize motor
+    motor = RMDX6(motor_id=1, com_port='COM9', baudrate=115200, tsamp=0.001)  # Reinitialize motor
     print("Motor initialized. Starting to log values...")
     motor.set_torque(0.35)  # Set initial torque
     motorData= []
