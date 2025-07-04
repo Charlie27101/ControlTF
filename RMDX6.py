@@ -117,32 +117,32 @@ class RMDX6:
             return temp, curr, vel, angle
         return None, None, None, None
 
-        def set_speed_rpm(self, speed):
-        # Send speed in rpm to motor
-            #speedTodps = int(sped / 6)  # Convert to dps 
-            current_bytes = struct.pack('<h', int(sped / 6))  # Pack as little-endian
-            data_bytes = [0, 0] + list(current_bytes) + [0, 0]  # Pad to 6 bytes
-            response = self.send485('A2', data_bytes)  # Send command
-            if len(response) >= 11:
-                temp = response[4]
-                curr = struct.unpack('<h', response[5:7])[0] / 100.0
-                vel = struct.unpack('<h', response[7:9])[0] * self.gearatio
-                angle = struct.unpack('<h', response[9:11])[0]
-                return temp, curr, vel, angle
-            return None, None, None, None
+    def set_speed_rpm(self, speed):
+    # Send speed in rpm to motor
+        #speedTodps = int(sped / 6)  # Convert to dps 
+        current_bytes = struct.pack('<h', int(speed * 6))  # Pack as little-endian
+        data_bytes = [0, 0, 0] + list(current_bytes) + [0] # last 4 bytes are speed
+        response = self.send485('A2', data_bytes) # Send command
+        if len(response) >= 11:
+            temp = response[4]
+            curr = struct.unpack('<h', response[5:7])[0] / 100.0
+            vel = struct.unpack('<h', response[7:9])[0] * self.gearatio
+            angle = struct.unpack('<h', response[9:11])[0]
+            return temp, curr, vel, angle
+        return None, None, None, None
 
-        def set_speed_dps(self, speed):
-        # Send speed in dps to motor
-            current_bytes = struct.pack('<h', speed)  # Pack as little-endian
-            data_bytes = [0, 0] + list(current_bytes) + [0, 0]  # Pad to 6 bytes
-            response = self.send485('A2', data_bytes)  # Send command
-            if len(response) >= 11:
-                temp = response[4]
-                curr = struct.unpack('<h', response[5:7])[0] / 100.0
-                vel = struct.unpack('<h', response[7:9])[0] * self.gearatio
-                angle = struct.unpack('<h', response[9:11])[0]
-                return temp, curr, vel, angle
-            return None, None, None, None
+    def set_speed_dps(self, speed):
+    # Send speed in dps to motor
+        current_bytes = struct.pack('<h', speed)  # Pack as little-endian
+        data_bytes = [0, 0, 0] + list(current_bytes) + [0] # last 4 bytes are speed
+        response = self.send485('A2', data_bytes)  # Send command
+        if len(response) >= 11:
+            temp = response[4]
+            curr = struct.unpack('<h', response[5:7])[0] / 100.0
+            vel = struct.unpack('<h', response[7:9])[0] * self.gearatio
+            angle = struct.unpack('<h', response[9:11])[0]
+            return temp, curr, vel, angle
+        return None, None, None, None
 
     def move_to_position(self, angle_deg, max_vel):
         # Command motor to move to specific angle at max velocity
@@ -180,18 +180,31 @@ def csv_from_motor_data(filename, data):
             except Exception as e:
                 print(f"Error parsing response at {timestamp:.3f}s: {e}")
 
+def step_entry(t,stepStart, stepend=False):
+    # create a steps function
+    if not stepend:
+        return 1 if t >= stepStart else 0
+    else:
+        if t < 0:
+            return 0
+        return 1+step_entry(t - stepStart, stepStart, True)
+
 # Example usage: log values for 10 seconds
 if __name__ == '__main__':
     motor = RMDX6(motor_id=1, com_port='COM9', baudrate=115200, tsamp=0.001)  # Reinitialize motor
     print("Motor initialized. Starting to log values...")
-    motor.set_torque(0.35)  # Set initial torque
+    #motor.set_torque(0.35)  # Set initial torque
     motorData= []
-    timeVector = []
+    timeCount=0
     startime= time.time()#starting time
-    while startime>time.time()-2:  # Log for 10 seconds
-        motorData.append((motor.get_state_raw(),time.time()-startime))  # Append motor state and current time
+    while timeCount<20:  # Log for 10 seconds
+        #motor.set_speed_rpm(0 - (100*math.cos(3*timeCount)))
+        motor.set_speed_rpm(step_entry(timeCount,1,True)*5)  # Set speed based on step function
+        #print(motor.set_speed_rpm(0 - (100*math.cos(3*timeCount))))
+        motorData.append((motor.get_state_raw(),timeCount))  # Append motor state and current time
+        timeCount= time.time()-startime
     motor.stop()  # Stop motor after logging
     motor.close()  # Close port after use
     print("Motor port closed.") 
-    print(motorData)
+    #print(motorData)
     csv_from_motor_data('motor_data', motorData)  # Save data to CSV
