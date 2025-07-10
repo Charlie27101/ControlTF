@@ -124,12 +124,8 @@ class RMDX6:
         data_bytes = [0, 0, 0] + list(current_bytes) + [0] # last 4 bytes are speed
         response = self.send485('A2', data_bytes) # Send command
         if len(response) >= 11:
-            temp = response[4]
-            curr = struct.unpack('<h', response[5:7])[0] / 100.0
-            vel = struct.unpack('<h', response[7:9])[0] * self.gearatio
-            angle = struct.unpack('<h', response[9:11])[0]
-            return temp, curr, vel, angle
-        return None, None, None, None
+            return response
+        return None
 
     def set_speed_dps(self, speed):
     # Send speed in dps to motor
@@ -169,7 +165,7 @@ def csv_from_motor_data(filename, data):
         # Create CSV and write headers
     with open(filename+'.csv', 'w', newline='') as csvfile:
         writer = csv.writer(csvfile)
-        writer.writerow(['Time (s)', 'Temperature (°C)', 'Current (A)', 'Velocity (rpm)', 'Angle (deg)'])
+        writer.writerow(['Time', 'Temperature', 'Current', 'Velocity', 'Angle'])  # Header row
         for response, timestamp in motorData:
             try:
                 temp = response[4]
@@ -191,20 +187,22 @@ def step_entry(t,stepStart, stepend=False):
 
 # Example usage: log values for 10 seconds
 if __name__ == '__main__':
-    motor = RMDX6(motor_id=1, com_port='COM9', baudrate=115200, tsamp=0.001)  # Reinitialize motor
+    motor = RMDX6(motor_id=1, com_port='COM9', baudrate=115200, tsamp=0.005)  # Reinitialize motor
     print("Motor initialized. Starting to log values...")
-    #motor.set_torque(0.35)  # Set initial torque
     motorData= []
     timeCount=0
     startime= time.time()#starting time
-    while timeCount<20:  # Log for 10 seconds
-        #motor.set_speed_rpm(0 - (100*math.cos(3*timeCount)))
-        motor.set_speed_rpm(step_entry(timeCount,1,True)*5)  # Set speed based on step function
+    while timeCount<15:  # Log for 10 seconds
+        #motor.set_torque(0.3)  # Set initial torque
+        #motor.set_speed_dps((0 - (500 *math.cos(50*timeCount))))
+        motor.set_speed_rpm(step_entry(timeCount,3,True)*5)  # Set speed based on step function
+        #motor.quick_set_torque(step_entry(timeCount,2,True)*0.05)  # Set speed based on step function
         #print(motor.set_speed_rpm(0 - (100*math.cos(3*timeCount))))
         motorData.append((motor.get_state_raw(),timeCount))  # Append motor state and current time
         timeCount= time.time()-startime
-    motor.stop()  # Stop motor after logging
+    #motor.stop()  # Stop motor after logging
+    motor.set_speed_rpm(0)  # Set speed to 0 to stop motor
     motor.close()  # Close port after use
     print("Motor port closed.") 
     #print(motorData)
-    csv_from_motor_data('motor_data', motorData)  # Save data to CSV
+    csv_from_motor_data('pesas2', motorData)  # Save data to CSV
