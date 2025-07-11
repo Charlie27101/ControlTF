@@ -80,6 +80,14 @@ class RMDX6:
             return temp, current, vel, angle
         return None, None, None, None
 
+    def get_angle(self):
+        # Read temperature, current, velocity and angle from motor
+        response = self.send485('9C', [0]*6)
+        if len(response) >= 11:
+            angle = struct.unpack('<h', response[9:11])[0]  # Angle in degrees
+            return angle
+        return None
+
     def get_state_raw(self):
         # Read 13 byte array from motor for temp, current, velocity and angle
         response = self.send485('9C', [0]*6)
@@ -127,6 +135,16 @@ class RMDX6:
             return response
         return None
 
+    def set_position(self, angle_deg, max_vel=1000):
+        # Command motor to move to specific angle
+        angle_bytes = struct.pack('<l', int(angle_deg * 100*8))  # Pack angle (deg * 100)
+        vel_bytes = struct.pack('<h', int(max_vel))  # Pack velocity (deg * 100)
+        data_bytes = [0] +list(vel_bytes) +list(angle_bytes)  # Convert to list for sending
+        response = self.send485('A4', data_bytes) # Send command
+        if len(response) >= 11:
+            return response
+        return None
+
     def set_speed_dps(self, speed):
     # Send speed in dps to motor
         current_bytes = struct.pack('<h', speed)  # Pack as little-endian
@@ -143,7 +161,7 @@ class RMDX6:
     def move_to_position(self, angle_deg, max_vel):
         # Command motor to move to specific angle at max velocity
         vel_bytes = struct.pack('<h', int(max_vel))  # Pack max velocity (dps)
-        angle_bytes = struct.pack('<i', int(angle_deg * 100))  # Pack angle (deg * 100)
+        angle_bytes = struct.pack('<i', int(angle_deg * 100 ))  # Pack angle (deg * 100)
         data_bytes = list(vel_bytes + angle_bytes)  # Combine to 6 bytes
         return self.send485('A4', data_bytes)  # Send command
 
@@ -191,18 +209,29 @@ if __name__ == '__main__':
     print("Motor initialized. Starting to log values...")
     motorData= []
     timeCount=0
-    startime= time.time()#starting time
-    while timeCount<15:  # Log for 10 seconds
-        #motor.set_torque(0.3)  # Set initial torque
-        #motor.set_speed_dps((0 - (500 *math.cos(50*timeCount))))
-        motor.set_speed_rpm(step_entry(timeCount,3,True)*5)  # Set speed based on step function
-        #motor.quick_set_torque(step_entry(timeCount,2,True)*0.05)  # Set speed based on step function
-        #print(motor.set_speed_rpm(0 - (100*math.cos(3*timeCount))))
+    startime = time.time()  # Starting time
+    initialAngle=angle=motor.get_angle()
+    motor.move_to_position((angle+5*360), 200)  # Move to new position with max velocity
+    while (angle)<(initialAngle+5*360):
+        timeCount = time.time() - startime
         motorData.append((motor.get_state_raw(),timeCount))  # Append motor state and current time
-        timeCount= time.time()-startime
+        angle= motor.get_angle()
+    waiTime= time.time()#starting time
+    timeCountWait = 0
+    while timeCountWait<5:
+        timeCountWait = time.time() - waiTime
+        timeCount = time.time() - startime
+        motorData.append((motor.get_state_raw(),timeCount))
+    motor.move_to_position((initialAngle), 200)  # Move to new position with max velocity
+    while angle>(initialAngle):
+        timeCount = time.time() - startime
+        motorData.append((motor.get_state_raw(),timeCount))  # Append motor state and current time
+        angle= motor.get_angle()
     #motor.stop()  # Stop motor after logging
     motor.set_speed_rpm(0)  # Set speed to 0 to stop motor
+    
     motor.close()  # Close port after use
     print("Motor port closed.") 
-    #print(motorData)
-    csv_from_motor_data('pesas2', motorData)  # Save data to CSV
+    print(motorData)
+    filename = 'motor_data' + str(time.time()) # Define filename for CSV
+    csv_from_motor_data(filename, motorData)  # Save data to CSV
