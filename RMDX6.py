@@ -57,9 +57,6 @@ class RMDX6:
         if len(response) >= 11:
             angle_raw = struct.unpack('<i', response[7:11])[0]  # Extract signed 32-bit int
             return angle_raw / 100.0  # Convert to degrees
-        else :
-            print("Error: Invalid response length for angle request.")
-            return None
         return None
 
     def get_rpm(self):
@@ -209,6 +206,8 @@ if __name__ == '__main__':
     startime = time.time()  # Starting time
     initialAngle=angle=motor.get_angle()
     maxTime=3
+    startposition=motor.get_angle()  # Get initial angle
+
     while timeCount<maxTime:
         timeCount = time.time() - startime
 
@@ -217,10 +216,10 @@ if __name__ == '__main__':
         response = motor.quick_set_torque(torque)
 
         motorData.append((motor.get_state_raw(), timeCount))
+        if abs(motor.get_angle()-startposition) > 360*5:
+            print("Motor has moved more than 5 full rotations.")
+            break
 
-
-        
-    
     motor.close()  # Close port after use
     print("Motor port closed.") 
     print(motorData)
