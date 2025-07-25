@@ -207,13 +207,17 @@ if __name__ == '__main__':
     initialAngle=angle=motor.get_angle()
     maxTime=3
     startposition=motor.get_angle()  # Get initial angle
+    ciclo=0
+    periodoTorque=0.1
 
     while timeCount<maxTime:
         timeCount = time.time() - startime
 
-        # Set random torque between 0.3 and 1.5 A
-        torque = random.uniform(0.3, 1.5)
-        response = motor.quick_set_torque(torque)
+        if timeCount > startime+ciclo*periodoTorque:
+            # Set random torque between 0.3 and 1.5 A
+            torque = random.uniform(0.3, 1.5)
+            response = motor.quick_set_torque(torque)
+            ciclo += 1
 
         motorData.append((motor.get_state_raw(), timeCount))
         if abs(motor.get_angle()-startposition) > 360*5:
