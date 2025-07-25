@@ -219,8 +219,8 @@ if __name__ == '__main__':
         timeCount = time.time() - startime
 
         if timeCount > ciclo*periodoTorque:
-            # Set random torque between 0.3 and 1.5 A
-            torque = random.uniform(0.3, 1.5)
+            # Set random torque between 0.3 and 1.2 A
+            torque = random.uniform(0.3, 1.2)
             response = motor.quick_set_torque(torque)
             ciclo += 1
 
