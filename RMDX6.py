@@ -4,6 +4,7 @@ import struct
 import csv
 import struct
 import math
+import random
 
 class RMDX6:
     def __init__(self, motor_id, com_port, baudrate=115200, tsamp=0.02):
@@ -118,12 +119,8 @@ class RMDX6:
         data_bytes = [0, 0] + list(current_bytes) + [0, 0]  # Pad to 6 bytes
         response = self.send485('A1', data_bytes)  # Send command
         if len(response) >= 11:
-            temp = response[4]
-            curr = struct.unpack('<h', response[5:7])[0] / 100.0
-            vel = struct.unpack('<h', response[7:9])[0] * self.gearatio
-            angle = struct.unpack('<h', response[9:11])[0]
-            return temp, curr, vel, angle
-        return None, None, None, None
+            return response
+        return None
 
     def set_speed_rpm(self, speed):
     # Send speed in rpm to motor
@@ -184,7 +181,7 @@ def csv_from_motor_data(filename, data):
     with open(filename+'.csv', 'w', newline='') as csvfile:
         writer = csv.writer(csvfile)
         writer.writerow(['Time', 'Temperature', 'Current', 'Velocity', 'Angle'])  # Header row
-        for response, timestamp in motorData:
+        for response, timestamp in data:
             try:
                 temp = response[4]
                 curr = struct.unpack('<h', response[5:7])[0] / 100.0
@@ -211,24 +208,18 @@ if __name__ == '__main__':
     timeCount=0
     startime = time.time()  # Starting time
     initialAngle=angle=motor.get_angle()
-    motor.move_to_position((angle+5*360), 200)  # Move to new position with max velocity
-    while (angle)<(initialAngle+5*360):
+    maxTime=3
+    while timeCount<maxTime:
         timeCount = time.time() - startime
-        motorData.append((motor.get_state_raw(),timeCount))  # Append motor state and current time
-        angle= motor.get_angle()
-    waiTime= time.time()#starting time
-    timeCountWait = 0
-    while timeCountWait<5:
-        timeCountWait = time.time() - waiTime
-        timeCount = time.time() - startime
-        motorData.append((motor.get_state_raw(),timeCount))
-    motor.move_to_position((initialAngle), 200)  # Move to new position with max velocity
-    while angle>(initialAngle):
-        timeCount = time.time() - startime
-        motorData.append((motor.get_state_raw(),timeCount))  # Append motor state and current time
-        angle= motor.get_angle()
-    #motor.stop()  # Stop motor after logging
-    motor.set_speed_rpm(0)  # Set speed to 0 to stop motor
+
+        # Set random torque between 0.3 and 1.5 A
+        torque = random.uniform(0.3, 1.5)
+        response = motor.quick_set_torque(torque)
+
+        motorData.append((motor.get_state_raw(), timeCount))
+
+
+        
     
     motor.close()  # Close port after use
     print("Motor port closed.") 
