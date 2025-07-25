@@ -199,7 +199,7 @@ def step_entry(t,stepStart, stepend=False):
 
 # Example usage: log values for 10 seconds
 if __name__ == '__main__':
-    motor = RMDX6(motor_id=1, com_port='COM9', baudrate=115200, tsamp=0.005)  # Reinitialize motor
+    motor = RMDX6(motor_id=1, com_port='COM3', baudrate=115200, tsamp=0.005)  # Reinitialize motor
     print("Motor initialized. Starting to log values...")
     motorData= []
     timeCount=0
@@ -215,7 +215,7 @@ if __name__ == '__main__':
 
         if timeCount > startime+ciclo*periodoTorque:
             # Set random torque between 0.3 and 1.5 A
-            torque = random.uniform(0.3, 1.5)
+            torque = random.uniform(0.3, 1)
             response = motor.quick_set_torque(torque)
             ciclo += 1
 
