@@ -210,10 +210,15 @@ if __name__ == '__main__':
     ciclo=0
     periodoTorque=0.1
 
+    motor.set_position(startposition+6*360, max_vel=500)
+    time.sleep(2)
+    startposition=motor.get_angle()  # Get initial angle
+
+
     while timeCount<maxTime:
         timeCount = time.time() - startime
 
-        if timeCount > startime+ciclo*periodoTorque:
+        if timeCount > ciclo*periodoTorque:
             # Set random torque between 0.3 and 1.5 A
             torque = random.uniform(0.3, 1.5)
             response = motor.quick_set_torque(torque)
@@ -226,6 +231,6 @@ if __name__ == '__main__':
 
     motor.close()  # Close port after use
     print("Motor port closed.") 
-    print(motorData)
+    #print(motorData)
     filename = 'motor_data' + str(time.time()) # Define filename for CSV
     csv_from_motor_data(filename, motorData)  # Save data to CSV
