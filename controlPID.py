@@ -80,6 +80,15 @@ class RMDX6:
             return temp, current, vel, angle
         return None, None, None, None
 
+    def get_state_current(self):
+        # Read temperature, current, velocity and angle from motor
+        response = self.send485('9C', [0]*6)
+        if len(response) >= 11:
+            current = struct.unpack('<h', response[5:7])[0] / 100.0  # Current in A
+            return current
+        else:
+            return None
+
     def get_angle(self):
         # Read temperature, current, velocity and angle from motor
         response = self.send485('9C', [0]*6)
@@ -202,36 +211,44 @@ def step_entry(t,stepStart, stepend=False):
         if t < 0:
             return 0
         return 1+step_entry(t - stepStart, stepStart, True)
+    
+class pid_controller:
+    def __init__(self, Kp=1, Ki=1, Kd=1):
+        self.Kp = Kp
+        self.Ki = Ki
+        self.Kd = Kd
+        self.integral = 0
+        self.prev_error = 0
+
+    def get_pid(self):
+        return self.Kp, self.Ki, self.Kd, self.integral, self.prev_error
+
+    def control(self, setpoint, dt, measured):
+        # Simple PID controller
+        error = setpoint - measured
+        self.integral += error * dt
+        derivative = (error - self.prev_error) / dt if dt > 0 else 0
+        output = self.Kp * error + self.Ki * self.integral + self.Kd * derivative
+        return output
 
 # Example usage: log values for 10 seconds
 if __name__ == '__main__':
-    motor = RMDX6(motor_id=1, com_port='COM9', baudrate=115200, tsamp=0.005)  # Reinitialize motor
-    print("Motor initialized. Starting to log values...")
-    motorData= []
-    timeCount=0
-    startime = time.time()  # Starting time
-    initialAngle=angle=motor.get_angle()
-    motor.move_to_position((angle+5*360), 200)  # Move to new position with max velocity
-    while (angle)<(initialAngle+5*360):
-        timeCount = time.time() - startime
-        motorData.append((motor.get_state_raw(),timeCount))  # Append motor state and current time
-        angle= motor.get_angle()
-    waiTime= time.time()#starting time
-    timeCountWait = 0
-    while timeCountWait<5:
-        timeCountWait = time.time() - waiTime
-        timeCount = time.time() - startime
-        motorData.append((motor.get_state_raw(),timeCount))
-    motor.move_to_position((initialAngle), 200)  # Move to new position with max velocity
-    while angle>(initialAngle):
-        timeCount = time.time() - startime
-        motorData.append((motor.get_state_raw(),timeCount))  # Append motor state and current time
-        angle= motor.get_angle()
-    #motor.stop()  # Stop motor after logging
-    motor.set_speed_rpm(0)  # Set speed to 0 to stop motor
-    
-    motor.close()  # Close port after use
-    print("Motor port closed.") 
-    #print(motorData)
-    filename = 'motor_data' + str(time.time()) # Define filename for CSV
-    csv_from_motor_data(filename, motorData)  # Save data to CSV
+    motor = RMDX6(motor_id=1, com_port='COM3', tsamp=0.02)  # Adjust COM port as needed
+    pid = pid_controller(Kp=0.1, Ki=0.01, Kd=0.005)
+    duration = 10  # Duration to log data in seconds
+    motorData = []  # List to store (response, timestamp)
+    start_time = time.time()
+    try:
+        while (time.time() - start_time) < duration:
+            timestamp = time.time() - start_time
+            response = motor.get_state_raw()
+            motorData.append((response, timestamp))
+            pid.control(setpoint=0.5, dt=timestamp, measured=struct.unpack('<h', response[5:7])[0] / 100.0)  # Current in A)
+
+    except KeyboardInterrupt:
+        print("Logging interrupted by user.")
+    finally:
+        motor.close()
+        date = time.strftime("%Y%m%d-%H%M%S")
+        csv_from_motor_data('motor_log'+date, motorData)
+        print("Data logged to motor_log.csv")
