@@ -225,45 +225,48 @@ class pid_controller:
 
     def control(self, setpoint, dt, measured):
         # Simple PID controller
-        #print("dt = ", dt)
+        print("dt = ", dt)
         error = setpoint - measured
-        #print("Error medido = ", error)
+        print("Error medido = ", error)
         self.integral += error * dt
-        #print("Error integral = ", self.integral)
+        print("Error integral = ", self.integral)
         derivative = (error - self.prev_error) / dt if dt > 0 else 0
-        #print("Error derivativo = ", derivative)
+        print("Error derivativo = ", derivative)
         output = self.Kp * error + self.Ki * self.integral + self.Kd * derivative
         if output > 3:
             output = 3  
         elif output < -3:
             output = -3          
-        #print("Acción de control = ", output)
+        print("Acción de control = ", output)
         return output
 
 # Example usage: log values for 10 seconds
 if __name__ == '__main__':
     motor = RMDX6(motor_id=1, com_port='COM4', tsamp=0.02)  # Adjust COM port as needed
-    Pcr = 0.17
-    Kcr = 0.25
-    pid_velocidad = pid_controller(Kp=Kcr*0.6, Ki = 1.2 * Kcr / Pcr, Kd = 0.075 * Kcr * Pcr)
+    Pcr = 1.4
+    Kcr = 0.0026
+    #Kcr = 0.0026
+    pid_posicion = pid_controller(Kp = Kcr * 0.6, Ki = 1.2 * Kcr / Pcr, Kd = 0.075 * Kcr * Pcr)
     duration = 4 # Duration to log data in seconds
     motorData = []  # List to store (response, timestamp)
     start_time = time.time()
     timestamp = 0
     accion_control = 0
     dt_while = 0
+    a,b,c,Pos_act = motor.get_state()
+    Set_pos = Pos_act + 360
     try:
         while (timestamp) < duration:
             dt_while = time.time() - start_time - timestamp 
             timestamp = time.time() - start_time
             response = motor.get_state_raw()
             motorData.append((response, timestamp))
-            accion_control = pid_velocidad.control(setpoint=1, dt=dt_while, measured=struct.unpack('<h', response[7:9])[0]/(360))  # Current in A)
+            accion_control = pid_posicion.control(setpoint=Set_pos, dt=dt_while, measured=struct.unpack('<h', response[9:11])[0])  # Current in A)
             motor.set_torque(accion_control)
     except KeyboardInterrupt:
         print("Logging interrupted by user.")
     finally:
         motor.close()
         date = time.strftime("%Y%m%d-%H%M%S")
-        csv_from_motor_data('motor_log'+date, motorData)
+        #csv_from_motor_data('motor_log'+date, motorData)
         print("Data logged to motor_log.csv")
